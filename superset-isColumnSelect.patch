@@ -1,0 +1,248 @@
+diff --git a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
+index 557c208324..9b581fe371 100644
+--- a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
++++ b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
+@@ -63,26 +63,31 @@ function DatasetColumnSelect({
+   value?: string | null;
+   onChange?: (value: string | null) => void;
+ }) {
+-  const [columns, setColumns] = useState<string[]>([]);
+-  const [loading, setLoading] = useState(false);
++  // loadedForId tracks which dataset the current column list belongs to.
++  // loading and the visible options are derived during render rather than set
++  // in the effect, which avoids the react-compiler state-in-effect warning.
++  const [{ loadedForId, fetchedColumns }, setFetchState] = useState<{
++    loadedForId?: number;
++    fetchedColumns: string[];
++  }>({ fetchedColumns: [] });
++
++  const loading = !!(datasetId && loadedForId !== datasetId);
++  const options = loadedForId === datasetId ? fetchedColumns : [];
+ 
+   useEffect(() => {
+-    if (!datasetId) {
+-      setColumns([]);
+-      return;
+-    }
+-    setLoading(true);
++    if (!datasetId) return;
+     cachedSupersetGet({
+       endpoint: `/api/v1/dataset/${datasetId}?q=${rison.encode({
+         columns: ['columns.column_name'],
+       })}`,
+-    })
+-      .then(({ json: { result } }) => {
+-        setColumns(
+-          result.columns.map((col: Column) => col.column_name).filter(Boolean),
+-        );
+-      })
+-      .finally(() => setLoading(false));
++    }).then(({ json: { result } }) => {
++      setFetchState({
++        loadedForId: datasetId,
++        fetchedColumns: result.columns
++          .map((col: Column) => col.column_name)
++          .filter(Boolean),
++      });
++    });
+   }, [datasetId]);
+ 
+   return (
+@@ -92,7 +97,7 @@ function DatasetColumnSelect({
+       loading={loading}
+       value={value ?? undefined}
+       onChange={onChange as (val: string) => void}
+-      options={columns.map(col => ({ label: col, value: col }))}
++      options={options.map(col => ({ label: col, value: col }))}
+       placeholder={t('None — show filter values as labels')}
+       showSearch
+     />
+@@ -118,6 +123,41 @@ const CleanFormItem = styled(FormItem)`
+   margin-bottom: 0;
+ `;
+ 
++/** Resolves the saved or default initial value for a control. */
++function resolveInitialValue(
++  controlItem: CustomControlItem,
++  filterToEdit?: ControlItemsProps['filterToEdit'],
++  customizationToEdit?: ControlItemsProps['customizationToEdit'],
++) {
++  return (
++    filterToEdit?.controlValues?.[controlItem.name] ??
++    customizationToEdit?.controlValues?.[controlItem.name] ??
++    controlItem?.config?.default ??
++    null
++  );
++}
++
++/** Renders a StyledLabel with an optional description tooltip. */
++function ControlLabel({
++  label,
++  description,
++}: {
++  label?: ReactNode;
++  description?: ReactNode;
++}) {
++  return (
++    <StyledLabel>
++      {label}
++      {description && (
++        <>
++          &nbsp;
++          <InfoTooltip placement="top" tooltip={String(description)} />
++        </>
++      )}
++    </StyledLabel>
++  );
++}
++
+ export default function getControlItemsMap({
+   expanded,
+   datasetId,
+@@ -135,6 +175,10 @@ export default function getControlItemsMap({
+   const controlPanelRegistry = getChartControlPanelRegistry();
+   const controlItems =
+     getControlItems(controlPanelRegistry.get(filterType)) ?? [];
++  const notifyChange = () => {
++    forceUpdate();
++    formChanged();
++  };
+   const mapControlItems: Record<
+     string,
+     { element: ReactNode; checked: boolean }
+@@ -150,10 +194,11 @@ export default function getControlItemsMap({
+         mainControlItem?.name === 'groupby',
+     )
+     .forEach(mainControlItem => {
+-      const initialValue =
+-        filterToEdit?.controlValues?.[mainControlItem.name] ??
+-        customizationToEdit?.controlValues?.[mainControlItem.name] ??
+-        mainControlItem?.config?.default;
++      const initialValue = resolveInitialValue(
++        mainControlItem,
++        filterToEdit,
++        customizationToEdit,
++      );
+       const initColumn =
+         customizationToEdit?.targets?.[0]?.column?.name ??
+         filterToEdit?.targets?.[0]?.column?.name;
+@@ -174,9 +219,9 @@ export default function getControlItemsMap({
+             name={['filters', filterId, 'column']}
+             initialValue={initColumn}
+             label={
+-              <StyledLabel>
+-                {mainControlItem.config?.label || t('Column')}
+-              </StyledLabel>
++              <ControlLabel
++                label={mainControlItem.config?.label || t('Column')}
++              />
+             }
+             rules={[
+               {
+@@ -202,8 +247,7 @@ export default function getControlItemsMap({
+                 setNativeFilterFieldValues(form, filterId, {
+                   defaultDataMask: null,
+                 });
+-                forceUpdate();
+-                formChanged();
++                notifyChange();
+               }}
+             />
+           </StyledFormItem>
+@@ -215,36 +259,37 @@ export default function getControlItemsMap({
+       };
+     });
+ 
+-  // Render optional column-picker controls declared by filter plugins.
+-  // Currently supports controls named 'displayColumn'.
++  // Render plugin-declared column-picker controls.
++  // Any control with isColumnSelect: true in its config is rendered as a
++  // dataset column picker stored in controlValues. This lets filter plugins
++  // declare optional column selectors without further changes here.
+   controlItems
+-    .filter((item: CustomControlItem) => item?.name === 'displayColumn')
++    .filter((item: CustomControlItem) => item?.config?.isColumnSelect === true)
+     .forEach(controlItem => {
+-      const initialValue =
+-        filterToEdit?.controlValues?.[controlItem.name] ??
+-        customizationToEdit?.controlValues?.[controlItem.name] ??
+-        null;
++      const initialValue = resolveInitialValue(
++        controlItem,
++        filterToEdit,
++        customizationToEdit,
++      );
+       const element = (
+         <StyledFormItem
+           expanded={expanded}
+           name={['filters', filterId, 'controlValues', controlItem.name]}
+           initialValue={initialValue}
+           label={
+-            <StyledLabel>
+-              {controlItem.config?.label || t('Display Column')}
+-            </StyledLabel>
++            <ControlLabel
++              label={controlItem.config?.label}
++              description={controlItem.config?.description}
++            />
+           }
+         >
+-          <DatasetColumnSelect
+-            datasetId={datasetId}
+-            onChange={() => {
+-              forceUpdate();
+-              formChanged();
+-            }}
+-          />
++          <DatasetColumnSelect datasetId={datasetId} onChange={notifyChange} />
+         </StyledFormItem>
+       );
+-      mapMainControlItems[controlItem.name] = { element, checked: initialValue };
++      mapMainControlItems[controlItem.name] = {
++        element,
++        checked: initialValue,
++      };
+     });
+ 
+   controlItems
+@@ -255,10 +300,11 @@ export default function getControlItemsMap({
+         controlItem.name !== 'enableSingleValue',
+     )
+     .forEach(controlItem => {
+-      const initialValue =
+-        filterToEdit?.controlValues?.[controlItem.name] ??
+-        customizationToEdit?.controlValues?.[controlItem.name] ??
+-        controlItem?.config?.default;
++      const initialValue = resolveInitialValue(
++        controlItem,
++        filterToEdit,
++        customizationToEdit,
++      );
+       const element = (
+         <>
+           <CleanFormItem
+@@ -301,19 +347,13 @@ export default function getControlItemsMap({
+                       defaultDataMask: null,
+                     });
+                   }
+-                  formChanged();
+-                  forceUpdate();
++                  notifyChange();
+                 }}
+               >
+-                <>
+-                  {controlItem.config.label}&nbsp;
+-                  {controlItem.config.description && (
+-                    <InfoTooltip
+-                      placement="top"
+-                      tooltip={controlItem.config.description}
+-                    />
+-                  )}
+-                </>
++                <ControlLabel
++                  label={controlItem.config.label}
++                  description={controlItem.config.description}
++                />
+               </Checkbox>
+             </StyledRowFormItem>
+           </Tooltip>

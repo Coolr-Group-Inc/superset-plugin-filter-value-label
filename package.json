@@ -1,0 +1,37 @@
+{
+  "name": "@coolr/superset-plugin-filter-value-label",
+  "version": "0.1.0",
+  "description": "Superset native filter that supports separate value and display label columns",
+  "license": "Apache-2.0",
+  "main": "lib/index.js",
+  "module": "esm/index.js",
+  "files": [
+    "esm",
+    "lib",
+    "src",
+    "superset-isColumnSelect.patch"
+  ],
+  "scripts": {
+    "build": "node ../../build-utils/build.js",
+    "build:dev": "node ../../build-utils/build.js --dev",
+    "lint": "eslint src --ext .ts,.tsx",
+    "type-check": "tsc --noEmit"
+  },
+  "peerDependencies": {
+    "@apache-superset/core": "*",
+    "@superset-ui/chart-controls": "*",
+    "@superset-ui/core": "*",
+    "react": "^17.0.0 || ^18.0.0",
+    "react-dom": "^17.0.0 || ^18.0.0"
+  },
+  "devDependencies": {
+    "@types/react": "^18.0.0",
+    "typescript": "^5.0.0"
+  },
+  "keywords": [
+    "superset",
+    "superset-plugin",
+    "native-filter",
+    "select-filter"
+  ]
+}
