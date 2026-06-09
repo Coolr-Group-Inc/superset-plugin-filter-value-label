@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # deploy-superset-610.sh
-# Deploys Superset 6.1.0 with the filter-value-label plugin.
+# Deploys Superset 6.1.0 with the filter-value-label plugin, or rolls back.
 # Run as root on the production server.
 
 set -euo pipefail
@@ -13,17 +13,53 @@ SUPERSET_TAG="6.1.0"
 PROJECT="superset"
 COMPOSE="$SUPERSET_DIR/docker-compose-non-dev.yml"
 OLD_COMPOSE="$OLD_DIR/docker-compose-prod-6.yml"
+BACKUP_DIR="/opt/superset-backups"
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 step() { printf '\n\033[1;34m▶  %s\033[0m\n' "$*"; }
 ok()   { printf '\033[1;32m✔  %s\033[0m\n' "$*"; }
 warn() { printf '\033[1;33m⚠  %s\033[0m\n' "$*"; }
 die()  { printf '\033[1;31m✖  %s\033[0m\n' "$*"; exit 1; }
+info() { printf '\033[1;37m   %s\033[0m\n' "$*"; }
 
+# ── Prerequisites ─────────────────────────────────────────────────────────────
 [ "$(whoami)" = "root" ] || die "Run as root"
-command -v docker >/dev/null || die "Docker not found"
-command -v git    >/dev/null || die "git not found"
-command -v python3>/dev/null || die "python3 not found"
+command -v docker  >/dev/null || die "Docker not found"
+command -v git     >/dev/null || die "git not found"
+command -v python3 >/dev/null || die "python3 not found"
+
+# ── Menu ──────────────────────────────────────────────────────────────────────
+printf '\n\033[1;37m╔══════════════════════════════════════════╗\033[0m\n'
+printf '\033[1;37m║   Superset 6.1.0 Deployment Manager     ║\033[0m\n'
+printf '\033[1;37m╚══════════════════════════════════════════╝\033[0m\n\n'
+printf '  1) Migrate  — upgrade to Superset 6.1.0\n'
+printf '  2) Rollback — revert to previous version\n\n'
+printf 'Select an option [1/2]: '
+read -r CHOICE
+
+case "$CHOICE" in
+    1) ;;
+    2) ;;
+    *) die "Invalid choice. Run the script again and enter 1 or 2." ;;
+esac
+
+# ══════════════════════════════════════════════════════════════════════════════
+# MIGRATE
+# ══════════════════════════════════════════════════════════════════════════════
+if [ "$CHOICE" = "1" ]; then
+
+# ── 0. Backup database ────────────────────────────────────────────────────────
+step "Backing up existing database before migration"
+mkdir -p "$BACKUP_DIR"
+BACKUP_FILE="$BACKUP_DIR/superset-db-$(date +%Y%m%d-%H%M%S).sql"
+
+if docker ps --format '{{.Names}}' | grep -q "superset_db"; then
+    docker exec superset_db pg_dump -U superset superset > "$BACKUP_FILE" \
+        && ok "Database backed up → $BACKUP_FILE" \
+        || warn "Backup failed — continuing anyway (no existing data to protect?)"
+else
+    warn "superset_db container not running — skipping backup"
+fi
 
 # ── 1. Clone Superset ─────────────────────────────────────────────────────────
 step "Cloning Superset $SUPERSET_TAG → $SUPERSET_DIR"
@@ -162,11 +198,10 @@ ok "Plugin registered"
 
 # ── 9. Fix postgres version ───────────────────────────────────────────────────
 step "Pinning postgres to v16 (existing data compatibility)"
-# Use wildcard so the script is robust to future version bumps in compose
 sed -i 's/image: postgres:[0-9]*/image: postgres:16/' "$COMPOSE"
 ok "Postgres pinned to v16"
 
-# ── 10. Copy server config ─────────────────────────────────────────────────────
+# ── 10. Copy server config ────────────────────────────────────────────────────
 step "Copying config from $OLD_DIR"
 if [ -f "$OLD_DIR/docker/.env-local" ]; then
     cp "$OLD_DIR/docker/.env-local" "$SUPERSET_DIR/docker/"
@@ -236,6 +271,61 @@ if [ "$EXIT_CODE" != "0" ]; then
 fi
 ok "superset-init completed"
 
-# ── Done ──────────────────────────────────────────────────────────────────────
+# ── Done ─────────────────────────────────────────────────────────────────────
 SERVER_IP=$(hostname -I | awk '{print $1}')
 printf '\n\033[1;32m✅  Superset 6.1.0 is live at http://%s:8088\033[0m\n' "$SERVER_IP"
+[ -f "$BACKUP_FILE" ] && info "Backup saved at: $BACKUP_FILE (keep this for rollback)"
+
+fi  # end MIGRATE
+
+# ══════════════════════════════════════════════════════════════════════════════
+# ROLLBACK
+# ══════════════════════════════════════════════════════════════════════════════
+if [ "$CHOICE" = "2" ]; then
+
+step "Stopping new containers (6.1.0)"
+if [ -f "$COMPOSE" ]; then
+    docker compose -p "$PROJECT" -f "$COMPOSE" down 2>/dev/null \
+        && ok "New containers stopped" \
+        || warn "New containers were not running"
+else
+    warn "$COMPOSE not found — new containers may not have been started"
+fi
+
+step "Starting old containers"
+if [ -f "$OLD_COMPOSE" ]; then
+    docker compose -p "$PROJECT" -f "$OLD_COMPOSE" up -d
+    ok "Old containers started"
+else
+    die "$OLD_COMPOSE not found — cannot roll back. Check $OLD_DIR exists."
+fi
+
+# ── Offer database restore ────────────────────────────────────────────────────
+LATEST_BACKUP=$(ls -t "$BACKUP_DIR"/superset-db-*.sql 2>/dev/null | head -1 || true)
+if [ -n "$LATEST_BACKUP" ]; then
+    printf '\n\033[1;33m⚠  A database backup was found: %s\033[0m\n' "$LATEST_BACKUP"
+    printf '   If the new version ran db migrations, the old containers may fail\n'
+    printf '   to start correctly without restoring the database.\n\n'
+    printf 'Restore database from backup? [y/N]: '
+    read -r RESTORE_CHOICE
+    if [ "$RESTORE_CHOICE" = "y" ] || [ "$RESTORE_CHOICE" = "Y" ]; then
+        step "Waiting for superset_db to be ready"
+        sleep 5
+        step "Restoring database from $LATEST_BACKUP"
+        docker exec -i superset_db psql -U superset superset < "$LATEST_BACKUP" \
+            && ok "Database restored successfully" \
+            || die "Database restore failed — check the backup file manually"
+    else
+        info "Skipping database restore"
+        info "If the old Superset fails to load, restore manually:"
+        info "  docker exec -i superset_db psql -U superset superset < $LATEST_BACKUP"
+    fi
+else
+    warn "No backup found in $BACKUP_DIR — skipping database restore"
+    info "If old containers fail, you may need to restore the database manually"
+fi
+
+SERVER_IP=$(hostname -I | awk '{print $1}')
+printf '\n\033[1;32m✅  Rollback complete — old Superset running at http://%s:8088\033[0m\n' "$SERVER_IP"
+
+fi  # end ROLLBACK
