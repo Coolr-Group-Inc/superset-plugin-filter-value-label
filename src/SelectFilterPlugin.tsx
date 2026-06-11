@@ -221,6 +221,9 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
 
   const prevExcludeFilterValues = useRef(excludeFilterValues);
   const hasOnlyOrientationChanged = useRef(false);
+  // Tracks the value auto-selected by defaultToFirstItemIfSingleOption so it
+  // can be distinguished from a user-made selection later.
+  const autoSelectedSingleOptionRef = useRef<SelectValue>(null);
 
   useEffect(() => {
     const previousOrientation = orientationMap.get(formData.nativeFilterId);
@@ -275,6 +278,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       col,
       displayCol,
       defaultToFirstItem,
+      defaultToFirstItemIfSingleOption,
       dispatchDataMask,
       enableEmptyFilter,
       inverseSelection,
@@ -309,6 +313,9 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
 
   const handleChange = useCallback(
     (value?: SelectValue | number | string) => {
+      // A direct user interaction means any prior auto-selected value no
+      // longer reflects the user's intent.
+      autoSelectedSingleOptionRef.current = null;
       const values = value === null ? [null] : ensureIsArray(value);
       if (values.length === 0) {
         updateDataMask(null);
@@ -391,6 +398,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       } else if (defaultToFirstItemIfSingleOption && data.length === 1) {
         const onlyItem: SelectValue = [data[0][col] as string];
         if (onlyItem?.[0] !== undefined) {
+          autoSelectedSingleOptionRef.current = onlyItem;
           updateDataMask(onlyItem);
         }
       } else if (formData?.defaultValue) {
@@ -427,6 +435,25 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   }, [data, col]);
 
   useEffect(() => {
+    if (!clearAllTrigger && Object.keys(formData?.extraFormData || {}).length) {
+      // If we previously auto-selected the single available option and the
+      // dataset no longer resolves to exactly one option, clear it before the
+      // "value is still valid in data" check below can short-circuit this
+      // effect (the auto-selected value is often still present in the new
+      // data, e.g. when a parent filter relaxes a constraint).
+      if (
+        defaultToFirstItemIfSingleOption &&
+        data.length !== 1 &&
+        autoSelectedSingleOptionRef.current !== null &&
+        JSON.stringify(filterState.value) ===
+          JSON.stringify(autoSelectedSingleOptionRef.current)
+      ) {
+        autoSelectedSingleOptionRef.current = null;
+        updateDataMask(null);
+        return;
+      }
+    }
+
     if (
       filterState.value?.every((value?: any) =>
         data.some(row => row[col] === value),
@@ -449,14 +476,9 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
       } else if (defaultToFirstItemIfSingleOption && data.length === 1) {
         const onlyItem: SelectValue = [data[0][col] as string];
         if (onlyItem?.[0] !== undefined) {
+          autoSelectedSingleOptionRef.current = onlyItem;
           updateDataMask(onlyItem);
         }
-      } else if (
-        defaultToFirstItemIfSingleOption &&
-        data.length !== 1 &&
-        filterState.value !== undefined
-      ) {
-        updateDataMask(null);
       }
     }
   }, [
@@ -475,6 +497,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
 
   useEffect(() => {
     if (clearAllTrigger) {
+      autoSelectedSingleOptionRef.current = null;
       dispatchDataMask({
         type: 'filterState',
         extraFormData: {},
