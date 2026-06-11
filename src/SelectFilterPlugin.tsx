@@ -182,6 +182,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     showSearch,
     inverseSelection,
     defaultToFirstItem,
+    defaultToFirstItemIfSingleOption,
     searchAllOptions,
   } = formData;
 
@@ -260,7 +261,8 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
           ...filterState,
           label: displayLabel,
           value:
-            appSection === AppSection.FilterConfigModal && defaultToFirstItem
+            appSection === AppSection.FilterConfigModal &&
+            (defaultToFirstItem || defaultToFirstItemIfSingleOption)
               ? undefined
               : values,
           excludeFilterValues,
@@ -283,7 +285,8 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   );
 
   const isDisabled =
-    appSection === AppSection.FilterConfigModal && defaultToFirstItem;
+    appSection === AppSection.FilterConfigModal &&
+    (defaultToFirstItem || defaultToFirstItemIfSingleOption);
 
   const onSearch = useMemo(
     () =>
@@ -385,6 +388,11 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
         if (firstItem?.[0] !== undefined) {
           updateDataMask(firstItem);
         }
+      } else if (defaultToFirstItemIfSingleOption && data.length === 1) {
+        const onlyItem: SelectValue = [data[0][col] as string];
+        if (onlyItem?.[0] !== undefined) {
+          updateDataMask(onlyItem);
+        }
       } else if (formData?.defaultValue) {
         updateDataMask(formData.defaultValue);
       }
@@ -393,6 +401,7 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
     isDisabled,
     enableEmptyFilter,
     defaultToFirstItem,
+    defaultToFirstItemIfSingleOption,
     formData?.defaultValue,
     data,
     col,
@@ -427,20 +436,32 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
 
     const firstItem: SelectValue = data[0] ? [data[0][col] as string] : null;
 
-    if (
-      !clearAllTrigger &&
-      defaultToFirstItem &&
-      Object.keys(formData?.extraFormData || {}).length &&
-      filterState.value !== undefined &&
-      firstItem !== null &&
-      filterState.value !== firstItem
-    ) {
-      if (firstItem?.[0] !== undefined) {
-        updateDataMask(firstItem);
+    if (!clearAllTrigger && Object.keys(formData?.extraFormData || {}).length) {
+      if (
+        defaultToFirstItem &&
+        filterState.value !== undefined &&
+        firstItem !== null &&
+        filterState.value !== firstItem
+      ) {
+        if (firstItem?.[0] !== undefined) {
+          updateDataMask(firstItem);
+        }
+      } else if (defaultToFirstItemIfSingleOption && data.length === 1) {
+        const onlyItem: SelectValue = [data[0][col] as string];
+        if (onlyItem?.[0] !== undefined) {
+          updateDataMask(onlyItem);
+        }
+      } else if (
+        defaultToFirstItemIfSingleOption &&
+        data.length !== 1 &&
+        filterState.value !== undefined
+      ) {
+        updateDataMask(null);
       }
     }
   }, [
     defaultToFirstItem,
+    defaultToFirstItemIfSingleOption,
     updateDataMask,
     formData,
     data,

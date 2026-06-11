@@ -13,6 +13,7 @@ const {
   multiSelect,
   creatable,
   defaultToFirstItem,
+  defaultToFirstItemIfSingleOption,
   searchAllOptions,
   sortAscending,
 } = DEFAULT_FORM_DATA;
@@ -122,7 +123,23 @@ const config: ControlPanelConfig = {
               renderTrigger: true,
               requiredFirst: true,
               description: t(
-                "When using this option, default value can't be set. Using this option may impact the load times for your dashboard.",
+                'When using this option, default value cannot be set. Using this option may impact the load times for your dashboard.',
+              ),
+            },
+          },
+        ],
+        [
+          {
+            name: 'defaultToFirstItemIfSingleOption',
+            config: {
+              type: 'CheckboxControl',
+              label: t('Select value by default if only one option exists'),
+              default: defaultToFirstItemIfSingleOption,
+              resetConfig: true,
+              affectsDataMask: true,
+              renderTrigger: true,
+              description: t(
+                'Automatically selects the filter value when there is only one available option. When using this option, default value cannot be set.',
               ),
             },
           },
