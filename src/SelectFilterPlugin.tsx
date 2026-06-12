@@ -226,6 +226,12 @@ export default function PluginFilterSelect(props: PluginFilterSelectProps) {
   const autoSelectedSingleOptionRef = useRef<SelectValue>(null);
 
   useEffect(() => {
+    if (!defaultToFirstItemIfSingleOption) {
+      autoSelectedSingleOptionRef.current = null;
+    }
+  }, [defaultToFirstItemIfSingleOption]);
+
+  useEffect(() => {
     const previousOrientation = orientationMap.get(formData.nativeFilterId);
     if (
       previousOrientation !== undefined &&

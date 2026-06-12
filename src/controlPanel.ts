@@ -139,8 +139,10 @@ const config: ControlPanelConfig = {
               affectsDataMask: true,
               renderTrigger: true,
               description: t(
-                'Automatically selects the filter value when there is only one available option. When using this option, default value cannot be set.',
+                'Automatically selects the filter value when there is only one available option. Ignored when "Select first filter value by default" is enabled. When using this option, default value cannot be set.',
               ),
+            },
+          }
             },
           },
         ],
