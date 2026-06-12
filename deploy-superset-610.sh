@@ -168,6 +168,7 @@ ok "ALLOW_DEPENDENCIES patched"
 # ── 7. Copy plugin source ─────────────────────────────────────────────────────
 step "Copying plugin source into Superset frontend"
 mkdir -p "$SUPERSET_DIR/superset-frontend/plugins/plugin-filter-value-label"
+rm -rf "$SUPERSET_DIR/superset-frontend/plugins/plugin-filter-value-label/src"
 cp -r "$PLUGIN_DIR/src" \
     "$SUPERSET_DIR/superset-frontend/plugins/plugin-filter-value-label/"
 ok "Plugin source copied"
@@ -225,6 +226,17 @@ else
     echo "SUPERSET_LOAD_EXAMPLES=false" >> "$ENV_LOCAL"
 fi
 ok "SUPERSET_LOAD_EXAMPLES=false set"
+
+# ── 10c. Validate SECRET_KEY ──────────────────────────────────────────────────
+step "Checking SUPERSET_SECRET_KEY"
+CURRENT_KEY=$(grep "^SUPERSET_SECRET_KEY=" "$ENV_LOCAL" 2>/dev/null | tail -1 | cut -d= -f2)
+if [ -z "$CURRENT_KEY" ] || [ "$CURRENT_KEY" = "TEST_NON_DEV_SECRET" ]; then
+    die "SUPERSET_SECRET_KEY is missing or set to the insecure default in $ENV_LOCAL.
+  Add a strong key before building:
+    echo 'SUPERSET_SECRET_KEY=<your-secret>' >> $ENV_LOCAL
+  Use the same key as your previous deployment so existing sessions remain valid."
+fi
+ok "SUPERSET_SECRET_KEY is set"
 
 # ── 11. Write requirements-local.txt ─────────────────────────────────────────
 step "Writing requirements-local.txt"
