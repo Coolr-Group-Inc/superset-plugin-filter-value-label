@@ -121,17 +121,21 @@ content = content.replace(
     "uv pip install .[postgres,starrocks]"
 )
 
-odbc_block = """
-# Install Microsoft ODBC Driver 18 for SQL Server (Debian 12 bookworm packages, compatible with Debian 13)
-RUN apt-get update \\\\
-    && apt-get install -y --no-install-recommends curl gnupg2 apt-transport-https \\\\
-    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \\\\
-    && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \\\\
-    && apt-get update \\\\
-    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev \\\\
-    && rm -rf /var/lib/apt/lists/* \\\\
-    && uv pip install pyodbc
-"""
+odbc_block = (
+    "\n# Install Microsoft ODBC Driver 18 for SQL Server"
+    " (Debian 12 bookworm packages, compatible with Debian 13)\n"
+    "RUN apt-get update \\\n"
+    "    && apt-get install -y --no-install-recommends curl gnupg2 apt-transport-https \\\n"
+    "    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc"
+    " | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \\\n"
+    '    && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/microsoft-prod.gpg]'
+    ' https://packages.microsoft.com/debian/12/prod bookworm main"'
+    " > /etc/apt/sources.list.d/mssql-release.list \\\n"
+    "    && apt-get update \\\n"
+    "    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev \\\n"
+    "    && rm -rf /var/lib/apt/lists/* \\\n"
+    "    && uv pip install pyodbc\n"
+)
 if "msodbcsql18" not in content:
     content = content.replace(
         "uv pip install .[postgres,starrocks]",
