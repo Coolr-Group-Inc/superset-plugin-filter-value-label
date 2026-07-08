@@ -120,6 +120,24 @@ content = content.replace(
     "uv pip install .[postgres]",
     "uv pip install .[postgres,starrocks]"
 )
+
+odbc_block = """
+# Install Microsoft ODBC Driver 18 for SQL Server (Debian 12 bookworm packages, compatible with Debian 13)
+RUN apt-get update \\\\
+    && apt-get install -y --no-install-recommends curl gnupg2 apt-transport-https \\\\
+    && curl -fsSL https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor -o /usr/share/keyrings/microsoft-prod.gpg \\\\
+    && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/microsoft-prod.gpg] https://packages.microsoft.com/debian/12/prod bookworm main" > /etc/apt/sources.list.d/mssql-release.list \\\\
+    && apt-get update \\\\
+    && ACCEPT_EULA=Y apt-get install -y --no-install-recommends msodbcsql18 unixodbc-dev \\\\
+    && rm -rf /var/lib/apt/lists/* \\\\
+    && uv pip install pyodbc
+"""
+if "msodbcsql18" not in content:
+    content = content.replace(
+        "uv pip install .[postgres,starrocks]",
+        "uv pip install .[postgres,starrocks]" + odbc_block
+    )
+
 open(path, "w").write(content)
 print("  Dockerfile patched")
 PY
@@ -217,8 +235,8 @@ else
     warn "pythonpath_dev not found in $OLD_DIR/docker/ — skipping"
 fi
 
-# ── 10b. Disable example loading ─────────────────────────────────────────────
-step "Disabling example data loading"
+# ── 10b. Disable example loading + force non-dev mode ────────────────────────
+step "Configuring .env-local"
 ENV_LOCAL="$SUPERSET_DIR/docker/.env-local"
 if grep -q "SUPERSET_LOAD_EXAMPLES" "$ENV_LOCAL" 2>/dev/null; then
     sed -i 's/^SUPERSET_LOAD_EXAMPLES=.*/SUPERSET_LOAD_EXAMPLES=false/' "$ENV_LOCAL"
@@ -226,6 +244,15 @@ else
     echo "SUPERSET_LOAD_EXAMPLES=false" >> "$ENV_LOCAL"
 fi
 ok "SUPERSET_LOAD_EXAMPLES=false set"
+
+# docker/.env ships with DEV_MODE=true which triggers an editable install of
+# /app/superset-core that does not exist in the production image — override it.
+if grep -q "^DEV_MODE=" "$ENV_LOCAL" 2>/dev/null; then
+    sed -i 's/^DEV_MODE=.*/DEV_MODE=false/' "$ENV_LOCAL"
+else
+    echo "DEV_MODE=false" >> "$ENV_LOCAL"
+fi
+ok "DEV_MODE=false set"
 
 # ── 10c. Validate SECRET_KEY ──────────────────────────────────────────────────
 step "Checking SUPERSET_SECRET_KEY"
@@ -243,6 +270,9 @@ step "Writing requirements-local.txt"
 cat > "$SUPERSET_DIR/docker/requirements-local.txt" << 'EOF'
 # Pin pymysql to version compatible with StarRocks 3.x
 pymysql==1.1.2
+# pyodbc is installed at image build time via Dockerfile (needs ODBC headers + compiler)
+# listed here as documentation only — pip install at runtime is a no-op
+pyodbc
 EOF
 ok "requirements-local.txt written"
 
