@@ -142,8 +142,6 @@ const config: ControlPanelConfig = {
                 'Automatically selects the filter value when there is only one available option. Ignored when "Select first filter value by default" is enabled. When using this option, default value cannot be set.',
               ),
             },
-          }
-            },
           },
         ],
         [

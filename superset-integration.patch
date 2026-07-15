@@ -1,0 +1,74 @@
+diff --git a/Dockerfile b/Dockerfile
+index f441e61..3ec55c3 100644
+--- a/Dockerfile
++++ b/Dockerfile
+@@ -43,8 +43,11 @@ ARG NPM_BUILD_CMD="build"
+ RUN /app/docker/apt-install.sh build-essential python3 zstd
+ 
+ # Define environment variables for frontend build
++# NODE_OPTIONS caps heap so TerserPlugin doesn't OOM in memory-constrained Docker builds
++ARG NODE_OPTIONS="--max-old-space-size=4096"
+ ENV BUILD_CMD=${NPM_BUILD_CMD} \
+-    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true
++    PUPPETEER_SKIP_CHROMIUM_DOWNLOAD=true \
++    NODE_OPTIONS=${NODE_OPTIONS}
+ 
+ # Run the frontend memory monitoring script
+ RUN /app/docker/frontend-mem-nag.sh
+@@ -261,7 +264,7 @@ RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
+ RUN --mount=type=cache,target=${SUPERSET_HOME}/.cache/uv \
+     uv pip install -e .
+ 
+-RUN uv pip install .[postgres]
++RUN uv pip install .[postgres,starrocks]
+ RUN python -m compileall /app/superset
+ 
+ USER superset
+diff --git a/docker/docker-bootstrap.sh b/docker/docker-bootstrap.sh
+index 58d71d2..5275e60 100755
+--- a/docker/docker-bootstrap.sh
++++ b/docker/docker-bootstrap.sh
+@@ -58,11 +58,7 @@ fi
+ #
+ if [ -f "${REQUIREMENTS_LOCAL}" ]; then
+   echo "Installing local overrides at ${REQUIREMENTS_LOCAL}"
+-  if command -v uv > /dev/null 2>&1; then
+-    uv pip install --no-cache-dir -r "${REQUIREMENTS_LOCAL}"
+-  else
+-    pip install --no-cache-dir -r "${REQUIREMENTS_LOCAL}"
+-  fi
++  pip install --no-cache-dir --force-reinstall -r "${REQUIREMENTS_LOCAL}"
+ else
+   echo "Skipping local overrides"
+ fi
+diff --git a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/hooks/useFilterOperations.ts b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/hooks/useFilterOperations.ts
+index b57143e..33eea1b 100644
+--- a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/hooks/useFilterOperations.ts
++++ b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/hooks/useFilterOperations.ts
+@@ -28,6 +28,7 @@ export const ALLOW_DEPENDENCIES = [
+   'filter_range',
+   'filter_select',
+   'filter_time',
++  'filter_value_label',
+ ];
+ 
+ interface AvailableFilterOption {
+diff --git a/superset-frontend/src/setup/setupPlugins.ts b/superset-frontend/src/setup/setupPlugins.ts
+index f222dcc..b025e01 100644
+--- a/superset-frontend/src/setup/setupPlugins.ts
++++ b/superset-frontend/src/setup/setupPlugins.ts
+@@ -20,12 +20,14 @@ import { getChartControlPanelRegistry } from '@superset-ui/core';
+ import { convertAgGridStateToOwnState } from '@superset-ui/plugin-chart-ag-grid-table';
+ import MainPreset from '../visualizations/presets/MainPreset';
+ import setupPluginsExtra from './setupPluginsExtra';
++import { ValueLabelFilterPlugin } from '@coolr/superset-plugin-filter-value-label';
+ import { registerChartStateConverter } from '../dashboard/util/chartStateConverter';
+ 
+ import Separator from '../explore/controlPanels/Separator';
+ 
+ export default function setupPlugins() {
+   new MainPreset().register();
++  new ValueLabelFilterPlugin().configure({ key: 'filter_value_label' }).register();
+ 
+   // TODO: Remove these shims once the control panel configs are moved into the plugin package.
+   getChartControlPanelRegistry().registerValue('separator', Separator);

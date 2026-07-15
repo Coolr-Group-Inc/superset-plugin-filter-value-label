@@ -1,13 +1,47 @@
 diff --git a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
-index 557c208324..9b581fe371 100644
+index 2334869..e3a539b 100644
 --- a/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
 +++ b/superset-frontend/src/dashboard/components/nativeFilters/FiltersConfigModal/FiltersConfigForm/getControlItemsMap.tsx
-@@ -63,26 +63,31 @@ function DatasetColumnSelect({
-   value?: string | null;
-   onChange?: (value: string | null) => void;
- }) {
--  const [columns, setColumns] = useState<string[]>([]);
--  const [loading, setLoading] = useState(false);
+@@ -17,21 +17,25 @@
+  * under the License.
+  */
+ import { CustomControlItem } from '@superset-ui/chart-controls';
+-import { ReactNode } from 'react';
++import { ReactNode, useState, useEffect } from 'react';
+ import {
+   Checkbox,
+   FormItem,
+   InfoTooltip,
++  Select,
+   Tooltip,
+   type FormInstance,
+ } from '@superset-ui/core/components';
+ import { t } from '@apache-superset/core/translation';
+ import {
++  Column,
+   Filter,
+   ChartCustomization,
+   getChartControlPanelRegistry,
+ } from '@superset-ui/core';
+ import { styled } from '@apache-superset/core/theme';
++import rison from 'rison';
++import { cachedSupersetGet } from 'src/utils/cachedSupersetGet';
+ import {
+   doesColumnMatchFilterType,
+   getControlItems,
+@@ -60,10 +64,94 @@ export interface ControlItemsProps {
+   removed?: boolean;
+ }
+ 
++function DatasetColumnSelect({
++  datasetId,
++  value,
++  onChange,
++}: {
++  datasetId?: number;
++  value?: string | null;
++  onChange?: (value: string | null) => void;
++}) {
 +  // loadedForId tracks which dataset the current column list belongs to.
 +  // loading and the visible options are derived during render rather than set
 +  // in the effect, which avoids the react-compiler state-in-effect warning.
@@ -18,25 +52,13 @@ index 557c208324..9b581fe371 100644
 +
 +  const loading = !!(datasetId && loadedForId !== datasetId);
 +  const options = loadedForId === datasetId ? fetchedColumns : [];
- 
-   useEffect(() => {
--    if (!datasetId) {
--      setColumns([]);
--      return;
--    }
--    setLoading(true);
++
++  useEffect(() => {
 +    if (!datasetId) return;
-     cachedSupersetGet({
-       endpoint: `/api/v1/dataset/${datasetId}?q=${rison.encode({
-         columns: ['columns.column_name'],
-       })}`,
--    })
--      .then(({ json: { result } }) => {
--        setColumns(
--          result.columns.map((col: Column) => col.column_name).filter(Boolean),
--        );
--      })
--      .finally(() => setLoading(false));
++    cachedSupersetGet({
++      endpoint: `/api/v1/dataset/${datasetId}?q=${rison.encode({
++        columns: ['columns.column_name'],
++      })}`,
 +    }).then(({ json: { result } }) => {
 +      setFetchState({
 +        loadedForId: datasetId,
@@ -45,19 +67,22 @@ index 557c208324..9b581fe371 100644
 +          .filter(Boolean),
 +      });
 +    });
-   }, [datasetId]);
- 
-   return (
-@@ -92,7 +97,7 @@ function DatasetColumnSelect({
-       loading={loading}
-       value={value ?? undefined}
-       onChange={onChange as (val: string) => void}
--      options={columns.map(col => ({ label: col, value: col }))}
++  }, [datasetId]);
++
++  return (
++    <Select
++      allowClear
++      loading={loading}
++      value={value ?? undefined}
++      onChange={onChange as (val: string) => void}
 +      options={options.map(col => ({ label: col, value: col }))}
-       placeholder={t('None — show filter values as labels')}
-       showSearch
-     />
-@@ -118,6 +123,41 @@ const CleanFormItem = styled(FormItem)`
++      placeholder={t('None — show filter values as labels')}
++      showSearch
++    />
++  );
++}
++
+ const CleanFormItem = styled(FormItem)`
    margin-bottom: 0;
  `;
  
@@ -99,7 +124,7 @@ index 557c208324..9b581fe371 100644
  export default function getControlItemsMap({
    expanded,
    datasetId,
-@@ -135,6 +175,10 @@ export default function getControlItemsMap({
+@@ -81,6 +169,10 @@ export default function getControlItemsMap({
    const controlPanelRegistry = getChartControlPanelRegistry();
    const controlItems =
      getControlItems(controlPanelRegistry.get(filterType)) ?? [];
@@ -110,7 +135,7 @@ index 557c208324..9b581fe371 100644
    const mapControlItems: Record<
      string,
      { element: ReactNode; checked: boolean }
-@@ -150,10 +194,11 @@ export default function getControlItemsMap({
+@@ -96,10 +188,11 @@ export default function getControlItemsMap({
          mainControlItem?.name === 'groupby',
      )
      .forEach(mainControlItem => {
@@ -126,7 +151,7 @@ index 557c208324..9b581fe371 100644
        const initColumn =
          customizationToEdit?.targets?.[0]?.column?.name ??
          filterToEdit?.targets?.[0]?.column?.name;
-@@ -174,9 +219,9 @@ export default function getControlItemsMap({
+@@ -120,9 +213,9 @@ export default function getControlItemsMap({
              name={['filters', filterId, 'column']}
              initialValue={initColumn}
              label={
@@ -139,7 +164,7 @@ index 557c208324..9b581fe371 100644
              }
              rules={[
                {
-@@ -202,8 +247,7 @@ export default function getControlItemsMap({
+@@ -148,8 +241,7 @@ export default function getControlItemsMap({
                  setNativeFilterFieldValues(form, filterId, {
                    defaultDataMask: null,
                  });
@@ -149,63 +174,47 @@ index 557c208324..9b581fe371 100644
                }}
              />
            </StyledFormItem>
-@@ -215,36 +259,37 @@ export default function getControlItemsMap({
+@@ -160,6 +252,39 @@ export default function getControlItemsMap({
+         checked: initialValue,
        };
      });
- 
--  // Render optional column-picker controls declared by filter plugins.
--  // Currently supports controls named 'displayColumn'.
 +  // Render plugin-declared column-picker controls.
 +  // Any control with isColumnSelect: true in its config is rendered as a
 +  // dataset column picker stored in controlValues. This lets filter plugins
 +  // declare optional column selectors without further changes here.
-   controlItems
--    .filter((item: CustomControlItem) => item?.name === 'displayColumn')
++  controlItems
 +    .filter((item: CustomControlItem) => item?.config?.isColumnSelect === true)
-     .forEach(controlItem => {
--      const initialValue =
--        filterToEdit?.controlValues?.[controlItem.name] ??
--        customizationToEdit?.controlValues?.[controlItem.name] ??
--        null;
++    .forEach(controlItem => {
 +      const initialValue = resolveInitialValue(
 +        controlItem,
 +        filterToEdit,
 +        customizationToEdit,
 +      );
-       const element = (
-         <StyledFormItem
-           expanded={expanded}
-           name={['filters', filterId, 'controlValues', controlItem.name]}
-           initialValue={initialValue}
-           label={
--            <StyledLabel>
--              {controlItem.config?.label || t('Display Column')}
--            </StyledLabel>
++      const element = (
++        <StyledFormItem
++          expanded={expanded}
++          name={['filters', filterId, 'controlValues', controlItem.name]}
++          initialValue={initialValue}
++          label={
 +            <ControlLabel
 +              label={controlItem.config?.label}
 +              description={controlItem.config?.description}
 +            />
-           }
-         >
--          <DatasetColumnSelect
--            datasetId={datasetId}
--            onChange={() => {
--              forceUpdate();
--              formChanged();
--            }}
--          />
++          }
++        >
 +          <DatasetColumnSelect datasetId={datasetId} onChange={notifyChange} />
-         </StyledFormItem>
-       );
--      mapMainControlItems[controlItem.name] = { element, checked: initialValue };
++        </StyledFormItem>
++      );
 +      mapMainControlItems[controlItem.name] = {
 +        element,
 +        checked: initialValue,
 +      };
-     });
- 
++    });
++
    controlItems
-@@ -255,10 +300,11 @@ export default function getControlItemsMap({
+     .filter(
+       (controlItem: CustomControlItem) =>
+@@ -168,10 +293,11 @@ export default function getControlItemsMap({
          controlItem.name !== 'enableSingleValue',
      )
      .forEach(controlItem => {
@@ -221,7 +230,7 @@ index 557c208324..9b581fe371 100644
        const element = (
          <>
            <CleanFormItem
-@@ -301,19 +347,13 @@ export default function getControlItemsMap({
+@@ -214,19 +340,13 @@ export default function getControlItemsMap({
                        defaultDataMask: null,
                      });
                    }
