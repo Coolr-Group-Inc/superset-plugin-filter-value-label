@@ -17,23 +17,11 @@ When **Display Column** is set, the filter dropdown shows labels from that colum
 
 **Example**: filter on `customer_id` (integer) but show `customer_name` in the dropdown.
 
-## Core Superset change required
+## Superset compatibility
 
-The plugin ships with `superset-isColumnSelect.patch`, which must be applied to the Superset source **before** building the frontend. Without it the Display Column picker will not appear in the filter configuration modal.
+This plugin targets current Superset releases where the native filter configuration supports column-select controls directly. The upstream `isColumnSelect: true` behavior introduced in Apache Superset makes this plugin compatible without a custom frontend patch.
 
-### What the patch does
-
-Adds a new control config flag `isColumnSelect: true` to `getControlItemsMap.tsx`. Any filter plugin that declares a control with this flag gets a dataset column picker in the filter configuration modal, stored in `controlValues`. This is analogous to how `renderTrigger: true` opts a control into being rendered as a checkbox, and is designed to be submitted as an upstream PR to Apache Superset.
-
-### Applying the patch
-
-```bash
-# From the superset-frontend directory:
-git apply node_modules/@coolr/plugin-filter-value-label/superset-isColumnSelect.patch
-
-# Or, if working from within this repository:
-git apply plugins/plugin-filter-value-label/superset-isColumnSelect.patch
-```
+The `displayColumn` control in this plugin is declared with `isColumnSelect: true`, which tells the native filter config modal to render a dataset column selector and store the selected value in `controlValues`. This is the built-in mechanism Superset exposes for plugin authors and does not require patching the core frontend for modern Docker or standard-release installs.
 
 ---
 
@@ -48,12 +36,11 @@ Use this when you control the full build pipeline or need backend changes alongs
 
 ### Steps
 
-#### 1. Install the plugin and apply the patch
+#### 1. Install the plugin
 
 ```bash
 cd superset-frontend
 npm install @coolr/plugin-filter-value-label
-git apply node_modules/@coolr/plugin-filter-value-label/superset-isColumnSelect.patch
 ```
 
 #### 2. Register the plugin
@@ -93,16 +80,15 @@ Use this when you already run an official `apache/superset` image and want to ad
 
 ### How it works
 
-Superset's frontend compiles to static files in `superset/static/assets/`. Replacing those files in the existing image with a freshly compiled set (that includes the plugin and the patch) is all that is needed.
+Superset's frontend compiles to static files in `superset/static/assets/`. Replacing those files in the existing image with a freshly compiled set that includes the plugin is all that is needed.
 
 ### Steps
 
-#### 1. Install the plugin and apply the patch
+#### 1. Install the plugin
 
 ```bash
 cd superset-frontend
 npm install @coolr/plugin-filter-value-label
-git apply node_modules/@coolr/plugin-filter-value-label/superset-isColumnSelect.patch
 ```
 
 #### 2. Register the plugin
@@ -130,7 +116,7 @@ Create `Dockerfile.patch` at the repository root:
 FROM apache/superset:4.1.0   # replace with your running image tag
 
 # Replace the pre-built frontend assets with the locally compiled ones
-# that include the plugin and the isColumnSelect patch.
+# that include the plugin.
 COPY --chown=superset:superset superset/static/assets/ /app/superset/static/assets/
 ```
 
@@ -165,4 +151,4 @@ cd superset-frontend
 npm run dev
 ```
 
-Browse to `http://localhost:9000`. The plugin is automatically included because `setupPlugins.ts` already imports it. The patch still needs to be applied once before starting the dev server.
+Browse to `http://localhost:9000`. The plugin is automatically included because `setupPlugins.ts` already imports it.
