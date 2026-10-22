@@ -8,8 +8,7 @@
   "files": [
     "esm",
     "lib",
-    "src",
-    "superset-isColumnSelect.patch"
+    "src"
   ],
   "scripts": {
     "build": "node ../../build-utils/build.js",
